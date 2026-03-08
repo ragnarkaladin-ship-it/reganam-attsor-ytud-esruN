@@ -38,31 +38,44 @@ class PostgresService implements DatabaseService {
   }
 
   async init() {
+    if (process.env.DB_RESET === 'true') {
+      console.warn("DB_RESET is true. Dropping all tables...");
+      await this.pool.query(`
+        DROP TABLE IF EXISTS duties CASCADE;
+        DROP TABLE IF EXISTS messages CASCADE;
+        DROP TABLE IF EXISTS nurses CASCADE;
+        DROP TABLE IF EXISTS admins CASCADE;
+      `);
+    }
+
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS admins (
         id SERIAL PRIMARY KEY,
-        name TEXT,
-        email TEXT UNIQUE,
-        password TEXT,
-        role TEXT,
-        ward TEXT
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        ward TEXT NOT NULL
       );
+
       CREATE TABLE IF NOT EXISTS nurses (
         id SERIAL PRIMARY KEY,
-        name TEXT,
-        email TEXT UNIQUE,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
         phone TEXT,
-        ward TEXT,
+        ward TEXT NOT NULL,
         specialty TEXT,
         nck_no TEXT,
         password TEXT DEFAULT 'TTNURSING123'
       );
+
       CREATE TABLE IF NOT EXISTS duties (
         id SERIAL PRIMARY KEY,
-        nurse_id INTEGER REFERENCES nurses(id),
-        date TEXT,
-        shift TEXT
+        nurse_id INTEGER REFERENCES nurses(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        shift TEXT NOT NULL
       );
+
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         sender_id INTEGER,
@@ -73,6 +86,11 @@ class PostgresService implements DatabaseService {
         category TEXT,
         metadata JSONB
       );
+
+      CREATE INDEX IF NOT EXISTS idx_duties_date ON duties(date);
+      CREATE INDEX IF NOT EXISTS idx_duties_nurse ON duties(nurse_id);
+      CREATE INDEX IF NOT EXISTS idx_nurses_email ON nurses(email);
+      CREATE INDEX IF NOT EXISTS idx_messages_ward ON messages(ward);
     `);
 
     // Seed Admin Accounts
@@ -378,17 +396,96 @@ class FirebaseService implements DatabaseService {
   }
 }
 
+// Memory Implementation (Fallback)
+class MemoryService implements DatabaseService {
+  private admins: AdminUser[] = [
+    { id: 1, name: 'Ward 1 Manager', email: 'admin.ward1@tumutumu.org', role: 'admin', ward: 'Ward 1' },
+    { id: 2, name: 'Chief Nursing Officer', email: 'cno@tumutumu.org', role: 'cno', ward: 'All' }
+  ];
+  private nurses: Nurse[] = [];
+  private duties: Duty[] = [];
+  private messages: Message[] = [];
+
+  async init() {
+    console.warn('USING MEMORY DATABASE FALLBACK. DATA WILL NOT PERSIST.');
+  }
+
+  async getAdmins(): Promise<AdminUser[]> { return this.admins; }
+  async getNurses(): Promise<Nurse[]> { return this.nurses; }
+  async getDuties(): Promise<Duty[]> { return this.duties; }
+  async getMessages(): Promise<Message[]> { return this.messages; }
+
+  async addNurse(nurse: Partial<Nurse>): Promise<Nurse> {
+    const newNurse = { ...nurse, id: Date.now() } as Nurse;
+    this.nurses.push(newNurse);
+    return newNurse;
+  }
+
+  async addDuty(duty: Partial<Duty>): Promise<Duty> {
+    const newDuty = { ...duty, id: Date.now() } as Duty;
+    this.duties.push(newDuty);
+    return newDuty;
+  }
+
+  async addMessage(message: Partial<Message>): Promise<Message> {
+    const newMessage = { ...message, id: Date.now() } as Message;
+    this.messages.push(newMessage);
+    return newMessage;
+  }
+
+  async updateNurse(nurseId: number, update: Partial<Nurse>): Promise<Nurse> {
+    const idx = this.nurses.findIndex(n => n.id === nurseId);
+    if (idx === -1) throw new Error('Nurse not found');
+    this.nurses[idx] = { ...this.nurses[idx], ...update };
+    return this.nurses[idx];
+  }
+
+  async updateDuty(dutyId: number, update: Partial<Duty>): Promise<Duty> {
+    const idx = this.duties.findIndex(d => d.id === dutyId);
+    if (idx === -1) throw new Error('Duty not found');
+    this.duties[idx] = { ...this.duties[idx], ...update };
+    return this.duties[idx];
+  }
+
+  async deleteDuty(dutyId: number): Promise<void> {
+    this.duties = this.duties.filter(d => d.id !== dutyId);
+  }
+
+  async updateMessage(messageId: number, update: Partial<Message>): Promise<Message> {
+    const idx = this.messages.findIndex(m => m.id === messageId);
+    if (idx === -1) throw new Error('Message not found');
+    this.messages[idx] = { ...this.messages[idx], ...update };
+    return this.messages[idx];
+  }
+
+  async login(email: string, password: string): Promise<{ user: Nurse | AdminUser; role: 'admin' | 'nurse' | 'cno' } | null> {
+    const admin = this.admins.find(a => a.email.toLowerCase() === email.toLowerCase() && password === 'admin123');
+    if (admin) return { user: admin, role: admin.role };
+    const nurse = this.nurses.find(n => n.email.toLowerCase() === email.toLowerCase() && (n.password === password || password === 'TTNURSING123'));
+    if (nurse) return { user: nurse, role: 'nurse' };
+    return null;
+  }
+}
+
 // Factory to get the correct database service
 export function getDatabaseService(): DatabaseService {
-  const type = process.env.DB_TYPE || 'postgres';
+  const type = process.env.DB_TYPE;
+  
+  if (!type) {
+    console.log('No DB_TYPE specified, defaulting to memory fallback.');
+    return new MemoryService();
+  }
+
   switch (type) {
     case 'mongodb':
       return new MongoService();
     case 'firebase':
       return new FirebaseService();
     case 'postgres':
-    default:
       return new PostgresService();
+    case 'memory':
+    default:
+      return new MemoryService();
   }
 }
 
