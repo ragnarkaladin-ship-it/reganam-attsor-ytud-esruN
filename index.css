@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@layer base {
+  @media print {
+    body {
+      background: white !important;
+      color: black !important;
+    }
+    
+    .print\:hidden {
+      display: none !important;
+    }
+    
+    .print\:block {
+      display: block !important;
+    }
+    
+    .print\:m-0 {
+      margin: 0 !important;
+    }
+    
+    .print\:p-0 {
+      padding: 0 !important;
+    }
+
+    /* Ensure table headers repeat on each page */
+    thead {
+      display: table-header-group;
+    }
+    
+    tr {
+      page-break-inside: avoid;
+    }
+
+    /* Matrix view specific print adjustments */
+    .overflow-x-auto {
+      overflow: visible !important;
+    }
+    
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+    
+    th, td {
+      border: 1px solid #e2e8f0 !important;
+    }
+    
+    .sticky {
+      position: static !important;
+    }
+  }
+}
+
+/* Custom scrollbar for better mobile aesthetics */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}

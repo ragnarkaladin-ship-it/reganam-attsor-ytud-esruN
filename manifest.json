@@ -1,0 +1,42 @@
+
+{
+  "id": "com.tumutumu.nurseshift",
+  "name": "NurseShift AI - Tumutumu Hospital",
+  "short_name": "NurseShift",
+  "description": "Professional Duty Roster Planner for PCEA Tumutumu Hospital staff and admins.",
+  "start_url": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay"],
+  "background_color": "#1e1b4b",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3304/3304567.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3304/3304567.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "View Roster",
+      "short_name": "Roster",
+      "description": "Quick access to current duty schedule",
+      "url": "./?tab=roster",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3304/3304567.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Register Staff",
+      "short_name": "Onboard",
+      "description": "Onboard new practitioners",
+      "url": "./?tab=staff",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3304/3304567.png", "sizes": "192x192" }]
+    }
+  ]
+}

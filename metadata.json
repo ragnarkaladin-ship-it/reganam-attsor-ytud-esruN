@@ -1,0 +1,7 @@
+{
+  "name": "NurseShift AI - Duty Roster Planner",
+  "description": "A comprehensive ward management system for hospital admins and nursing staff, featuring AI-powered shift optimization and real-time roster tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
