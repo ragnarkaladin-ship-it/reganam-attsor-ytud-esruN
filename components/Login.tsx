@@ -39,15 +39,34 @@ const Login: React.FC<LoginProps> = ({ onLogin, nurses }) => {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        onLogin(data.role, data.user);
-      } else {
-        setError(data.message || 'Invalid credentials');
+      const contentType = response.headers.get('content-type');
+      if (!response.ok) {
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          setError(errorData.message || `Server error (${response.status})`);
+        } else {
+          const text = await response.text();
+          console.error('Non-JSON error response:', text);
+          setError(`Server error (${response.status}): The server returned an unexpected response format.`);
+        }
+        return;
       }
-    } catch (err) {
-      setError('Connection to hospital server failed. Please try again.');
+
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        if (data.success) {
+          onLogin(data.role, data.user);
+        } else {
+          setError(data.message || 'Invalid credentials');
+        }
+      } else {
+        const text = await response.text();
+        console.error('Unexpected non-JSON response:', text);
+        setError('The server returned an invalid response format. Please contact support.');
+      }
+    } catch (err: any) {
+      console.error('Login fetch error:', err);
+      setError(`Connection failed: ${err.message || 'Unknown network error'}`);
     }
   };
 

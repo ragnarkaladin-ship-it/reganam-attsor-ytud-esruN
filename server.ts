@@ -7,6 +7,7 @@ import { createServer as createViteServer } from "vite";
 import { db } from "./services/db";
 import dotenv from "dotenv";
 
+console.log("SERVER.TS STARTING...");
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,27 +20,69 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  app.get("/ping", (req, res) => {
+    res.send("pong");
+  });
+
+  let dbReady = false;
+
   // Initialize Database
   try {
     await db.init();
+    dbReady = true;
     console.log("Database initialized successfully");
   } catch (err) {
     console.error("Failed to initialize database:", err);
   }
 
+  // Health Check
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: dbReady ? "ok" : "error", 
+      db: process.env.DB_TYPE || 'memory',
+      dbReady,
+      env: process.env.NODE_ENV || 'development'
+    });
+  });
+
+  app.get("/api/test", (req, res) => {
+    res.json({ success: true, message: "API is reachable" });
+  });
+
   // API Routes
   app.post("/api/login", async (req, res) => {
+    console.log(`Login attempt for: ${req.body?.email}`);
+    if (!dbReady) {
+      console.warn("Login attempt rejected: Database not ready");
+      return res.status(503).json({ 
+        success: false, 
+        message: "Database is not ready. Please check your configuration." 
+      });
+    }
     const { email, password } = req.body;
     try {
       const result = await db.login(email, password);
       if (result) {
+        console.log(`Login successful for: ${email}`);
         res.json({ success: true, ...result });
       } else {
+        console.log(`Login failed (invalid credentials) for: ${email}`);
         res.status(401).json({ success: false, message: "Invalid credentials" });
       }
-    } catch (err) {
-      res.status(500).json({ success: false, message: "Server error" });
+    } catch (err: any) {
+      console.error("Login error:", err);
+      res.status(500).json({ 
+        success: false, 
+        message: "Server error", 
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined 
+      });
     }
+  });
+
+  // Request Logger
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
   });
 
   app.get("/api/nurses", async (req, res) => {

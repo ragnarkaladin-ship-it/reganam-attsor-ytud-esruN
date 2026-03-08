@@ -28,16 +28,38 @@ class PostgresService implements DatabaseService {
   private pool: pg.Pool;
 
   constructor() {
+    const ssl = process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false;
     this.pool = new Pool({
       host: process.env.PG_HOST,
       port: parseInt(process.env.PG_PORT || '5432'),
       user: process.env.PG_USER,
       password: process.env.PG_PASSWORD,
       database: process.env.PG_DATABASE,
+      ssl: ssl,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    });
+
+    this.pool.on('error', (err) => {
+      console.error('Unexpected error on idle client', err);
     });
   }
 
   async init() {
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await this.pool.query('SELECT 1');
+        console.log("PostgreSQL connection verified.");
+        break;
+      } catch (err) {
+        retries--;
+        console.error(`PostgreSQL connection failed (${retries} retries left):`, err);
+        if (retries === 0) throw err;
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
     if (process.env.DB_RESET === 'true') {
       console.warn("DB_RESET is true. Dropping all tables...");
       await this.pool.query(`
@@ -235,7 +257,13 @@ class MongoService implements DatabaseService {
   }));
 
   async init() {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/nurseshift');
+    try {
+      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/nurseshift');
+      console.log("MongoDB connection verified.");
+    } catch (err) {
+      console.error("MongoDB connection failed:", err);
+      throw err;
+    }
   }
 
   async getAdmins(): Promise<AdminUser[]> {
@@ -471,22 +499,55 @@ class MemoryService implements DatabaseService {
 export function getDatabaseService(): DatabaseService {
   const type = process.env.DB_TYPE;
   
-  if (!type) {
-    console.log('No DB_TYPE specified, defaulting to memory fallback.');
+  if (!type || type === 'memory') {
+    console.log('Using memory database.');
     return new MemoryService();
   }
 
+  let service: DatabaseService;
   switch (type) {
     case 'mongodb':
-      return new MongoService();
+      service = new MongoService();
+      break;
     case 'firebase':
-      return new FirebaseService();
+      service = new FirebaseService();
+      break;
     case 'postgres':
-      return new PostgresService();
-    case 'memory':
+      service = new PostgresService();
+      break;
     default:
+      console.warn(`Unknown DB_TYPE: ${type}, defaulting to memory.`);
       return new MemoryService();
   }
+
+  // Wrap the service with a fallback mechanism
+  const originalInit = service.init.bind(service);
+  service.init = async function() {
+    try {
+      await originalInit();
+    } catch (err) {
+      console.error(`Failed to initialize ${type} database:`, err);
+      console.warn('FALLING BACK TO MEMORY DATABASE DUE TO INITIALIZATION FAILURE.');
+      
+      // Replace the service instance with MemoryService
+      const memory = new MemoryService();
+      await memory.init();
+      
+      // Monkey-patch the service methods to use memory instead
+      const methods: (keyof DatabaseService)[] = [
+        'getAdmins', 'getNurses', 'getDuties', 'getMessages',
+        'addNurse', 'addDuty', 'addMessage',
+        'updateNurse', 'updateDuty', 'deleteDuty', 'updateMessage',
+        'login'
+      ];
+      
+      for (const method of methods) {
+        (service as any)[method] = (memory as any)[method].bind(memory);
+      }
+    }
+  };
+
+  return service;
 }
 
 export const db = getDatabaseService();
