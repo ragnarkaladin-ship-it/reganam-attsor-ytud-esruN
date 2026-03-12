@@ -16,6 +16,7 @@ const NurseDashboard: React.FC<NurseDashboardProps> = ({
   activeTab, nurse, duties, messages, onSendMessage, onUpdateProfile 
 }) => {
   const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [showSwapForm, setShowSwapForm] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
@@ -101,6 +102,29 @@ const NurseDashboard: React.FC<NurseDashboardProps> = ({
       }
     });
     setShowLeaveForm(false);
+  };
+
+  const handleSwapRequest = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const myDate = formData.get('myDate') as string;
+    const targetDate = formData.get('targetDate') as string;
+    const targetNurse = formData.get('targetNurse') as string;
+
+    onSendMessage({
+      senderId: nurse.id,
+      senderRole: 'nurse',
+      ward: nurse.ward,
+      content: `Shift Swap Request: My shift on ${myDate} for ${targetNurse}'s shift on ${targetDate}.`,
+      category: 'shift_swap',
+      metadata: {
+        myDate,
+        targetDate,
+        targetNurse,
+        status: 'pending'
+      }
+    });
+    setShowSwapForm(false);
   };
 
   if (activeTab === 'dashboard') {
@@ -201,9 +225,14 @@ const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <h2 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3"><MessageSquare className="text-indigo-600" /> Administrative Line</h2>
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Direct contact with ward manager</p>
             </div>
-            <button onClick={() => setShowLeaveForm(!showLeaveForm)} className="bg-indigo-50 text-indigo-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-100 transition-all shadow-sm">
-              <PlaneTakeoff size={18} /> Request Leave
-            </button>
+            <div className="flex gap-3">
+              <button onClick={() => { setShowSwapForm(!showSwapForm); setShowLeaveForm(false); }} className="bg-slate-50 text-slate-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-all shadow-sm">
+                <Briefcase size={18} /> Request Swap
+              </button>
+              <button onClick={() => { setShowLeaveForm(!showLeaveForm); setShowSwapForm(false); }} className="bg-indigo-50 text-indigo-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-100 transition-all shadow-sm">
+                <PlaneTakeoff size={18} /> Request Leave
+              </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto mb-10 space-y-6 pr-4 custom-scrollbar relative">
@@ -224,6 +253,23 @@ const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
             )}
 
+            {showSwapForm && (
+              <div className="mb-8 p-8 bg-slate-900 text-white rounded-[2.5rem] shadow-2xl animate-in slide-in-from-top-4 duration-500">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-black text-lg flex items-center gap-2 uppercase tracking-tight"><Briefcase size={20} /> Shift Swap Request</h3>
+                  <button onClick={() => setShowSwapForm(false)} className="p-2 hover:bg-white/10 rounded-xl"><X size={20} /></button>
+                </div>
+                <form onSubmit={handleSwapRequest} className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase">My Shift Date</label><input type="date" name="myDate" required className="w-full bg-white/10 border border-white/20 p-4 rounded-xl outline-none focus:bg-white focus:text-slate-900 transition-all font-bold" /></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase">Target Date</label><input type="date" name="targetDate" required className="w-full bg-white/10 border border-white/20 p-4 rounded-xl outline-none focus:bg-white focus:text-slate-900 transition-all font-bold" /></div>
+                  </div>
+                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase">Target Nurse Name</label><input type="text" name="targetNurse" placeholder="e.g. Nurse Jane Doe" required className="w-full bg-white/10 border border-white/20 p-4 rounded-xl outline-none focus:bg-white focus:text-slate-900 transition-all font-bold" /></div>
+                  <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg hover:bg-indigo-700 transition-all">Submit Swap Request</button>
+                </form>
+              </div>
+            )}
+
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-30">
                  <MessageSquare size={64} /><p className="font-black uppercase tracking-widest text-xs">No active threads</p>
@@ -231,11 +277,16 @@ const NurseDashboard: React.FC<NurseDashboardProps> = ({
             ) : (
               messages.map(msg => {
                 const isLeaveRequest = msg.category === 'leave_request';
+                const isSwapRequest = msg.category === 'shift_swap';
                 const status = msg.metadata?.status;
                 return (
                   <div key={msg.id} className={`flex flex-col ${msg.senderRole === 'nurse' ? 'items-end' : 'items-start'}`}>
-                    <div className={`p-6 rounded-[2.5rem] max-w-[85%] shadow-md border ${isLeaveRequest ? (status === 'approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-indigo-50 border-indigo-200 text-indigo-900') : (msg.senderRole === 'nurse' ? 'bg-indigo-600 text-white border-indigo-700 rounded-tr-none' : 'bg-slate-100 text-slate-800 border-slate-200 rounded-tl-none')}`}>
-                      {isLeaveRequest && <p className="text-[9px] font-black uppercase tracking-widest mb-2 opacity-60">Professional Leave Protocol: {status || 'pending'}</p>}
+                    <div className={`p-6 rounded-[2.5rem] max-w-[85%] shadow-md border ${
+                      isLeaveRequest ? (status === 'approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-indigo-50 border-indigo-200 text-indigo-900') : 
+                      isSwapRequest ? (status === 'approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-slate-800 border-slate-700 text-white') :
+                      (msg.senderRole === 'nurse' ? 'bg-indigo-600 text-white border-indigo-700 rounded-tr-none' : 'bg-slate-100 text-slate-800 border-slate-200 rounded-tl-none')
+                    }`}>
+                      {(isLeaveRequest || isSwapRequest) && <p className="text-[9px] font-black uppercase tracking-widest mb-2 opacity-60">{isLeaveRequest ? 'Professional Leave Protocol' : 'Shift Swap Protocol'}: {status || 'pending'}</p>}
                       <p className="text-sm font-medium leading-relaxed">{msg.content}</p>
                       <p className={`text-[9px] font-black mt-3 uppercase tracking-tighter opacity-40`}>{msg.timestamp}</p>
                     </div>

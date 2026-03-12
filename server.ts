@@ -3,9 +3,10 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import { db } from "./services/db";
 import dotenv from "dotenv";
+import { WebSocketServer, WebSocket } from "ws";
+import { createServer } from "http";
 
 console.log("SERVER.TS STARTING...");
 dotenv.config();
@@ -15,7 +16,23 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
+  const httpServer = createServer(app);
+  const wss = new WebSocketServer({ server: httpServer });
   const PORT = process.env.PORT || 3000;
+
+  // WebSocket broadcast helper
+  const broadcast = (data: any) => {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(data));
+      }
+    });
+  };
+
+  wss.on("connection", (ws) => {
+    console.log("New WebSocket connection established");
+    ws.send(JSON.stringify({ type: "connected", message: "Real-time roster tracking active" }));
+  });
 
   app.use(cors());
   app.use(express.json());
@@ -97,6 +114,7 @@ async function startServer() {
   app.post("/api/nurses", async (req, res) => {
     try {
       const nurse = await db.addNurse(req.body);
+      broadcast({ type: "nurse_added", data: nurse });
       res.json(nurse);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -106,6 +124,7 @@ async function startServer() {
   app.put("/api/nurses/:id", async (req, res) => {
     try {
       const nurse = await db.updateNurse(parseInt(req.params.id), req.body);
+      broadcast({ type: "nurse_updated", data: nurse });
       res.json(nurse);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -129,6 +148,7 @@ async function startServer() {
         const savedDuty = await db.addDuty(duty);
         savedDuties.push(savedDuty);
       }
+      broadcast({ type: "duties_added", data: savedDuties });
       res.json(savedDuties);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -143,9 +163,12 @@ async function startServer() {
         const date = new Date(d.date);
         return date.getFullYear() === parseInt(year) && date.getMonth() === parseInt(month);
       });
+      const deletedIds = [];
       for (const d of toDelete) {
         await db.deleteDuty(d.id);
+        deletedIds.push(d.id);
       }
+      broadcast({ type: "duties_deleted", data: deletedIds });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -155,6 +178,7 @@ async function startServer() {
   app.put("/api/duties/:id", async (req, res) => {
     try {
       const duty = await db.updateDuty(parseInt(req.params.id), req.body);
+      broadcast({ type: "duty_updated", data: duty });
       res.json(duty);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -163,7 +187,9 @@ async function startServer() {
 
   app.delete("/api/duties/:id", async (req, res) => {
     try {
-      await db.deleteDuty(parseInt(req.params.id));
+      const id = parseInt(req.params.id);
+      await db.deleteDuty(id);
+      broadcast({ type: "duty_deleted", data: id });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -182,6 +208,7 @@ async function startServer() {
   app.post("/api/messages", async (req, res) => {
     try {
       const message = await db.addMessage(req.body);
+      broadcast({ type: "message_added", data: message });
       res.json(message);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -191,6 +218,7 @@ async function startServer() {
   app.put("/api/messages/:id", async (req, res) => {
     try {
       const message = await db.updateMessage(parseInt(req.params.id), req.body);
+      broadcast({ type: "message_updated", data: message });
       res.json(message);
     } catch (err) {
       res.status(500).json({ message: "Server error" });
@@ -200,6 +228,7 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && process.env.DISABLE_VITE !== "true") {
     console.log("Starting in development mode with Vite middleware...");
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -214,7 +243,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

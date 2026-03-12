@@ -21,7 +21,7 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isSynced, setIsSynced] = useState(true);
 
-  // Initial Data Fetching
+  // Initial Data Fetching & WebSocket Setup
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -44,6 +44,60 @@ const App: React.FC = () => {
     };
 
     fetchData();
+
+    // WebSocket setup for real-time updates
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log('Real-time update received:', message.type);
+
+        switch (message.type) {
+          case 'nurse_added':
+            setNurses(prev => prev.some(n => n.id === message.data.id) ? prev : [...prev, message.data]);
+            break;
+          case 'nurse_updated':
+            setNurses(prev => prev.map(n => n.id === message.data.id ? message.data : n));
+            break;
+          case 'duties_added':
+            setDuties(prev => {
+              const newDuties = message.data.filter((d: Duty) => !prev.some(p => p.id === d.id));
+              return [...prev, ...newDuties];
+            });
+            break;
+          case 'duty_updated':
+            setDuties(prev => prev.map(d => d.id === message.data.id ? message.data : d));
+            break;
+          case 'duty_deleted':
+            setDuties(prev => prev.filter(d => d.id !== message.data));
+            break;
+          case 'duties_deleted':
+            setDuties(prev => prev.filter(d => !message.data.includes(d.id)));
+            break;
+          case 'message_added':
+            setMessages(prev => prev.some(m => m.id === message.data.id) ? prev : [...prev, message.data]);
+            break;
+          case 'message_updated':
+            setMessages(prev => prev.map(m => m.id === message.data.id ? message.data : m));
+            break;
+        }
+      } catch (err) {
+        console.error('Failed to process WebSocket message:', err);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket connection closed. Real-time updates disabled.');
+      setIsSynced(false);
+    };
+
+    socket.onopen = () => {
+      console.log('WebSocket connected. Real-time updates active.');
+      setIsSynced(true);
+    };
     
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -53,6 +107,10 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     if (tabParam) setActiveTab(tabParam);
+
+    return () => {
+      socket.close();
+    };
   }, []);
 
   const handleInstallClick = async () => {

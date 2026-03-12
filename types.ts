@@ -43,10 +43,13 @@ export interface Message {
   ward: WardType;
   content: string;
   timestamp: string;
-  category?: 'general' | 'leave_request';
+  category?: 'general' | 'leave_request' | 'shift_swap';
   metadata?: {
     startDate?: string;
     endDate?: string;
+    myDate?: string;
+    targetDate?: string;
+    targetNurse?: string;
     isProcessed?: boolean;
     status?: 'approved' | 'rejected' | 'pending';
   };
